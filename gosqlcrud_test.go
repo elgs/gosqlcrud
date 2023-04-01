@@ -9,8 +9,8 @@ import (
 )
 
 type Test struct {
-	Id   int    `db:"id" pk:"true"`
-	Name string `db:"name"`
+	Id   int    `db:"ID" pk:"true"`
+	Name string `db:"NAME"`
 }
 
 func TestQueries(t *testing.T) {
@@ -116,13 +116,13 @@ func TestReflect(t *testing.T) {
 	test := Test{Id: 1, Name: "test"}
 
 	fields, pks := StructFieldToDbField(&test)
-	assert.Equal(t, "id", fields[0])
-	assert.Equal(t, "name", fields[1])
-	assert.Equal(t, "id", pks[0])
+	assert.Equal(t, "ID", fields[0])
+	assert.Equal(t, "NAME", fields[1])
+	assert.Equal(t, "ID", pks[0])
 
 	nonPkMap, pkMap := StructToDbMap(&test)
-	assert.Equal(t, "test", nonPkMap["name"])
-	assert.Equal(t, 1, pkMap["id"])
+	assert.Equal(t, "test", nonPkMap["NAME"])
+	assert.Equal(t, 1, pkMap["ID"])
 }
 
 func TestSqlSafe(t *testing.T) {

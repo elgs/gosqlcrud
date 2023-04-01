@@ -10,10 +10,22 @@ import (
 	"time"
 )
 
-const Version = "4"
+const Version = "1"
+
+type DbType int
 
 const (
-	AsIs = iota
+	SQLite DbType = iota
+	MySQL
+	PostgreSQL
+	MSSQLServer
+	Oracle
+)
+
+type CaseType int
+
+const (
+	AsIs CaseType = iota
 	Lower
 	Upper
 	Camel
@@ -25,7 +37,7 @@ type DB interface {
 }
 
 // QueryToArrays - run sql and return an array of arrays
-func QueryToArrays[T DB](conn T, theCase int, sqlStatement string, sqlParams ...any) ([]string, [][]any, error) {
+func QueryToArrays[T DB](conn T, theCase CaseType, sqlStatement string, sqlParams ...any) ([]string, [][]any, error) {
 	data := [][]any{}
 	rows, err := conn.Query(sqlStatement, sqlParams...)
 	if err != nil {
@@ -34,7 +46,10 @@ func QueryToArrays[T DB](conn T, theCase int, sqlStatement string, sqlParams ...
 		}
 		return []string{}, data, err
 	}
-	cols, _ := rows.Columns()
+	cols, err := rows.Columns()
+	if err != nil {
+		return []string{}, data, err
+	}
 	lenCols := len(cols)
 	for i, v := range cols {
 		if theCase == Lower {
@@ -47,7 +62,10 @@ func QueryToArrays[T DB](conn T, theCase int, sqlStatement string, sqlParams ...
 	}
 
 	rawResult := make([]any, lenCols)
-	colTypes, _ := rows.ColumnTypes()
+	colTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return []string{}, data, err
+	}
 	dest := make([]any, lenCols) // A temporary any slice
 	for i := range rawResult {
 		dest[i] = &rawResult[i] // Put pointers to each string in the interface slice
@@ -86,7 +104,7 @@ func QueryToArrays[T DB](conn T, theCase int, sqlStatement string, sqlParams ...
 }
 
 // QueryToMaps - run sql and return an array of maps
-func QueryToMaps[T DB](conn T, theCase int, sqlStatement string, sqlParams ...any) ([]map[string]any, error) {
+func QueryToMaps[T DB](conn T, theCase CaseType, sqlStatement string, sqlParams ...any) ([]map[string]any, error) {
 	results := []map[string]any{}
 	rows, err := conn.Query(sqlStatement, sqlParams...)
 	if err != nil {
@@ -95,7 +113,10 @@ func QueryToMaps[T DB](conn T, theCase int, sqlStatement string, sqlParams ...an
 		}
 		return results, err
 	}
-	cols, _ := rows.Columns()
+	cols, err := rows.Columns()
+	if err != nil {
+		return results, err
+	}
 	lenCols := len(cols)
 
 	for i, v := range cols {
@@ -109,7 +130,10 @@ func QueryToMaps[T DB](conn T, theCase int, sqlStatement string, sqlParams ...an
 	}
 
 	rawResult := make([]any, lenCols)
-	colTypes, _ := rows.ColumnTypes()
+	colTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return results, err
+	}
 	dest := make([]any, lenCols) // A temporary any slice
 	for i := range rawResult {
 		dest[i] = &rawResult[i] // Put pointers to each string in the interface slice
@@ -155,7 +179,10 @@ func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlP
 		}
 		return err
 	}
-	cols, _ := rows.Columns()
+	cols, err := rows.Columns()
+	if err != nil {
+		return err
+	}
 	lenCols := len(cols)
 
 	for rows.Next() { // iterate through rows
@@ -165,9 +192,8 @@ func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlP
 		for colIndex, colName := range cols { // iterate through columns
 			found := false
 			for fieldIndex := 0; fieldIndex < structValue.NumField(); fieldIndex++ { // iterate through struct fields
-				field := structValue.Type().Field(fieldIndex)
-				fieldTag := field.Tag.Get("db")
-				if strings.EqualFold(colName, fieldTag) {
+				dbTag := structValue.Type().Field(fieldIndex).Tag.Get("db")
+				if strings.EqualFold(colName, dbTag) {
 					colValues[colIndex] = structValue.Field(fieldIndex).Addr().Interface()
 					found = true
 					break
@@ -181,6 +207,71 @@ func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlP
 		*results = append(*results, result)
 	}
 
+	return nil
+}
+
+func Create[T DB, S any](conn T, data *S, table string) error {
+	return nil
+}
+
+func Retrieve[T DB, S any](conn T, dbType DbType, result *S, table string, idValues ...any) error {
+	fields, pks := StructFieldToDbField(result)
+	pkValues := make(map[string]any)
+	for i, pk := range pks {
+		pkValues[pk] = idValues[i]
+	}
+	where, values, err := MapForSqlWhere(pkValues, dbType)
+	if err != nil {
+		return err
+	}
+	fieldsString := strings.Join(fields, ", ")
+	SqlSafe(&fieldsString)
+	SqlSafe(&table)
+	SqlSafe(&where)
+	sqlStatement := fmt.Sprintf("SELECT %s FROM %s WHERE 1=1 %s", fieldsString, table, where)
+
+	rows, err := conn.Query(sqlStatement, values...)
+	if err != nil {
+		if os.Getenv("env") == "dev" {
+			fmt.Println("Error executing: ", sqlStatement)
+		}
+		return err
+	}
+	cols, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+	lenCols := len(cols)
+
+	if rows.Next() {
+		colValues := make([]any, lenCols)
+		structValue := reflect.ValueOf(result).Elem()
+		for colIndex, colName := range cols { // iterate through columns
+			found := false
+			for fieldIndex := 0; fieldIndex < structValue.NumField(); fieldIndex++ { // iterate through struct fields
+				dbTag := structValue.Type().Field(fieldIndex).Tag.Get("db")
+				if strings.EqualFold(colName, dbTag) {
+					colValues[colIndex] = structValue.Field(fieldIndex).Addr().Interface()
+					found = true
+					break
+				}
+			}
+			if !found {
+				colValues[colIndex] = new(any)
+			}
+		}
+		rows.Scan(colValues...)
+		rows.Close()
+		return nil
+	}
+	return fmt.Errorf("no record found for %s, %v", table, idValues)
+}
+
+func Update[T DB, S any](conn T, data *S, table string) error {
+	return nil
+}
+
+func Delete[T DB, S any](conn T, data *S, table string) error {
 	return nil
 }
 
@@ -221,4 +312,98 @@ func toCamel(s string) (ret string) {
 		}
 	}
 	return
+}
+
+func SqlSafe(s *string) {
+	*s = strings.Replace(*s, "'", "''", -1)
+	*s = strings.Replace(*s, "--", "", -1)
+}
+
+func StructFieldToDbField[T any](s *T) (fields []string, pks []string) {
+	structType := reflect.TypeOf(s).Elem()
+	for fieldIndex := 0; fieldIndex < structType.NumField(); fieldIndex++ {
+		fieldTag := structType.Field(fieldIndex).Tag
+		dbTag := fieldTag.Get("db")
+		if dbTag != "" {
+			fields = append(fields, dbTag)
+		}
+		pkTag := fieldTag.Get("pk")
+		if pkTag == "true" {
+			pks = append(pks, dbTag)
+		}
+	}
+	return
+}
+
+func MapForSqlInsert(m map[string]any, dbType DbType) (placeholders string, keys string, values []any, err error) {
+	length := len(m)
+	if length == 0 {
+		return "", "", nil, fmt.Errorf("empty parameter map")
+	}
+
+	for i := 0; i < length; i++ {
+		placeholders += GetPlaceHolder(i, dbType) + ","
+	}
+	placeholders = placeholders[:len(placeholders)-1]
+
+	values = make([]any, length)
+	i := 0
+	for k, v := range m {
+		keys += k + ","
+		values[i] = v
+		i++
+	}
+	keys = keys[:len(keys)-1]
+	SqlSafe(&keys)
+	return
+}
+
+func MapForSqlUpdate(m map[string]any, dbType DbType) (set string, values []any, err error) {
+	SqlSafe(&set)
+	length := len(m)
+	if length == 0 {
+		return "", nil, fmt.Errorf("empty parameter map")
+	}
+
+	values = make([]any, length)
+	i := 0
+	for k, v := range m {
+		set += fmt.Sprintf("%s=%s,", k, GetPlaceHolder(i, dbType))
+		values[i] = v
+		i++
+	}
+	set = set[:len(set)-1]
+	return
+}
+
+func MapForSqlWhere(m map[string]any, dbType DbType) (where string, values []any, err error) {
+	length := len(m)
+	if length == 0 {
+		return
+	}
+
+	i := 0
+	for k, v := range m {
+		if strings.HasPrefix(k, ".") {
+			continue
+		}
+		where += fmt.Sprintf("AND %s=%s ", k, GetPlaceHolder(i, dbType))
+		values = append(values, v)
+		i++
+	}
+	where = strings.TrimSpace(where)
+	SqlSafe(&where)
+	return
+}
+
+func GetPlaceHolder(index int, dbType DbType) string {
+	if dbType == PostgreSQL {
+		return fmt.Sprintf("$%d", index+1)
+	} else if dbType == MSSQLServer {
+		return fmt.Sprintf("@p%d", index+1)
+	} else if dbType == Oracle {
+		return fmt.Sprintf(":%d", index+1)
+	} else {
+		return "?"
+	}
 }

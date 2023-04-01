@@ -299,7 +299,6 @@ func Delete[T DB, S any](conn T, dbType DbType, data *S, table string) (map[stri
 	}
 	SqlSafe(&table)
 	sqlStatement := fmt.Sprintf(`DELETE FROM %s WHERE 1=1 %s`, table, where)
-	fmt.Println(sqlStatement)
 	return Exec(conn, sqlStatement, whereValues...)
 }
 

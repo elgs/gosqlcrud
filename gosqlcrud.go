@@ -210,24 +210,19 @@ func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlP
 	return nil
 }
 
-func Create[T DB, S any](conn T, data *S, table string) error {
-	return nil
-}
-
 func Retrieve[T DB, S any](conn T, dbType DbType, result *S, table string, idValues ...any) error {
 	fields, pks := StructFieldToDbField(result)
 	pkValues := make(map[string]any)
 	for i, pk := range pks {
 		pkValues[pk] = idValues[i]
 	}
-	where, values, err := MapForSqlWhere(pkValues, dbType)
+	where, values, err := MapForSqlWhere(pkValues, 0, dbType)
 	if err != nil {
 		return err
 	}
 	fieldsString := strings.Join(fields, ", ")
 	SqlSafe(&fieldsString)
 	SqlSafe(&table)
-	SqlSafe(&where)
 	sqlStatement := fmt.Sprintf("SELECT %s FROM %s WHERE 1=1 %s", fieldsString, table, where)
 
 	rows, err := conn.Query(sqlStatement, values...)
@@ -267,12 +262,45 @@ func Retrieve[T DB, S any](conn T, dbType DbType, result *S, table string, idVal
 	return fmt.Errorf("no record found for %s, %v", table, idValues)
 }
 
-func Update[T DB, S any](conn T, data *S, table string) error {
-	return nil
+func Create[T DB, S any](conn T, dbType DbType, data *S, table string) (map[string]int64, error) {
+	fieldMap, pkMap := StructToDbMap(data)
+	for k, v := range pkMap {
+		fieldMap[k] = v
+	}
+	qms, keys, values, err := MapForSqlInsert(fieldMap, dbType)
+	if err != nil {
+		return nil, err
+	}
+	SqlSafe(&table)
+	sqlStatement := fmt.Sprintf(`INSERT INTO %s (%s) VALUES (%s)`, table, keys, qms)
+	return Exec(conn, sqlStatement, values...)
 }
 
-func Delete[T DB, S any](conn T, data *S, table string) error {
-	return nil
+func Update[T DB, S any](conn T, dbType DbType, data *S, table string) (map[string]int64, error) {
+	nonPkMap, pkMap := StructToDbMap(data)
+	setClause, setValues, err := MapForSqlUpdate(nonPkMap, dbType)
+	if err != nil {
+		return nil, err
+	}
+	where, whereValues, err := MapForSqlWhere(pkMap, len(nonPkMap), dbType)
+	if err != nil {
+		return nil, err
+	}
+	values := append(setValues, whereValues...)
+	sqlStatement := fmt.Sprintf(`UPDATE %s SET %s WHERE 1=1 %s`, table, setClause, where)
+	return Exec(conn, sqlStatement, values...)
+}
+
+func Delete[T DB, S any](conn T, dbType DbType, data *S, table string) (map[string]int64, error) {
+	_, pkMap := StructToDbMap(data)
+	where, whereValues, err := MapForSqlWhere(pkMap, 0, dbType)
+	if err != nil {
+		return nil, err
+	}
+	SqlSafe(&table)
+	sqlStatement := fmt.Sprintf(`DELETE FROM %s WHERE 1=1 %s`, table, where)
+	fmt.Println(sqlStatement)
+	return Exec(conn, sqlStatement, whereValues...)
 }
 
 // Exec - run sql and return the number of rows affected
@@ -320,9 +348,9 @@ func SqlSafe(s *string) {
 }
 
 func StructFieldToDbField[T any](s *T) (fields []string, pks []string) {
-	structType := reflect.TypeOf(s).Elem()
-	for fieldIndex := 0; fieldIndex < structType.NumField(); fieldIndex++ {
-		fieldTag := structType.Field(fieldIndex).Tag
+	structValue := reflect.ValueOf(s).Elem()
+	for fieldIndex := 0; fieldIndex < structValue.NumField(); fieldIndex++ {
+		fieldTag := structValue.Type().Field(fieldIndex).Tag
 		dbTag := fieldTag.Get("db")
 		if dbTag != "" {
 			fields = append(fields, dbTag)
@@ -330,6 +358,25 @@ func StructFieldToDbField[T any](s *T) (fields []string, pks []string) {
 		pkTag := fieldTag.Get("pk")
 		if pkTag == "true" {
 			pks = append(pks, dbTag)
+		}
+	}
+	return
+}
+
+func StructToDbMap[T any](s *T) (nonPkMap map[string]any, pkMap map[string]any) {
+	nonPkMap = make(map[string]any)
+	pkMap = make(map[string]any)
+	structValue := reflect.ValueOf(s).Elem()
+	for fieldIndex := 0; fieldIndex < structValue.NumField(); fieldIndex++ {
+		fieldTag := structValue.Type().Field(fieldIndex).Tag
+		value := structValue.Field(fieldIndex).Interface()
+		pkTag := fieldTag.Get("pk")
+		dbTag := fieldTag.Get("db")
+		if dbTag != "" && pkTag != "true" {
+			nonPkMap[dbTag] = value
+		}
+		if pkTag == "true" {
+			pkMap[dbTag] = value
 		}
 	}
 	return
@@ -359,7 +406,6 @@ func MapForSqlInsert(m map[string]any, dbType DbType) (placeholders string, keys
 }
 
 func MapForSqlUpdate(m map[string]any, dbType DbType) (set string, values []any, err error) {
-	SqlSafe(&set)
 	length := len(m)
 	if length == 0 {
 		return "", nil, fmt.Errorf("empty parameter map")
@@ -373,16 +419,17 @@ func MapForSqlUpdate(m map[string]any, dbType DbType) (set string, values []any,
 		i++
 	}
 	set = set[:len(set)-1]
+	SqlSafe(&set)
 	return
 }
 
-func MapForSqlWhere(m map[string]any, dbType DbType) (where string, values []any, err error) {
+func MapForSqlWhere(m map[string]any, startIndex int, dbType DbType) (where string, values []any, err error) {
 	length := len(m)
 	if length == 0 {
 		return
 	}
 
-	i := 0
+	i := startIndex
 	for k, v := range m {
 		if strings.HasPrefix(k, ".") {
 			continue

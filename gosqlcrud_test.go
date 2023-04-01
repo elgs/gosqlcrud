@@ -70,13 +70,46 @@ func TestQueries(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "Alpha", resultStruct.Name)
 	assert.Equal(t, 1, resultStruct.Id)
-
-	resultStruct = Test{}
 	err = Retrieve(db, SQLite, &resultStruct, "test", 2)
 	assert.NoError(t, err)
 	assert.Equal(t, "Beta", resultStruct.Name)
 	assert.Equal(t, 2, resultStruct.Id)
+	err = Retrieve(db, SQLite, &resultStruct, "test", 3)
+	assert.NoError(t, err)
+	assert.Equal(t, "Gamma", resultStruct.Name)
+	assert.Equal(t, 3, resultStruct.Id)
+	err = Retrieve(db, SQLite, &resultStruct, "test", 4)
+	assert.Error(t, err)
 
+	data := Test{Id: 4, Name: "Delta"}
+	result, err = Create(db, SQLite, &data, "test")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(4), result["last_insert_id"])
+	assert.Equal(t, int64(1), result["rows_affected"])
+
+	err = Retrieve(db, SQLite, &resultStruct, "test", 4)
+	assert.NoError(t, err)
+	assert.Equal(t, "Delta", resultStruct.Name)
+	assert.Equal(t, 4, resultStruct.Id)
+
+	data.Name = "Omega"
+	result, err = Update(db, SQLite, &data, "test")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(4), result["last_insert_id"])
+	assert.Equal(t, int64(1), result["rows_affected"])
+
+	err = Retrieve(db, SQLite, &resultStruct, "test", 4)
+	assert.NoError(t, err)
+	assert.Equal(t, "Omega", resultStruct.Name)
+	assert.Equal(t, 4, resultStruct.Id)
+
+	result, err = Delete(db, SQLite, &data, "test")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(4), result["last_insert_id"])
+	assert.Equal(t, int64(1), result["rows_affected"])
+
+	err = Retrieve(db, SQLite, &resultStruct, "test", 4)
+	assert.Error(t, err)
 }
 
 func TestReflect(t *testing.T) {
@@ -86,6 +119,10 @@ func TestReflect(t *testing.T) {
 	assert.Equal(t, "id", fields[0])
 	assert.Equal(t, "name", fields[1])
 	assert.Equal(t, "id", pks[0])
+
+	nonPkMap, pkMap := StructToDbMap(&test)
+	assert.Equal(t, "test", nonPkMap["name"])
+	assert.Equal(t, 1, pkMap["id"])
 }
 
 func TestSqlSafe(t *testing.T) {

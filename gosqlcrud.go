@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const Version = "1"
+const Version = "2"
 
 type DbType int
 
@@ -210,13 +210,10 @@ func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlP
 	return nil
 }
 
-func Retrieve[T DB, S any](conn T, dbType DbType, result *S, table string, idValues ...any) error {
-	fields, pks := StructFieldToDbField(result)
-	pkValues := make(map[string]any)
-	for i, pk := range pks {
-		pkValues[pk] = idValues[i]
-	}
-	where, values, err := MapForSqlWhere(pkValues, 0, dbType)
+func Retrieve[T DB, S any](conn T, dbType DbType, result *S, table string) error {
+	fields := StructFieldToDbField(result)
+	_, pkMap := StructToDbMap(result)
+	where, values, err := MapForSqlWhere(pkMap, 0, dbType)
 	if err != nil {
 		return err
 	}
@@ -259,7 +256,7 @@ func Retrieve[T DB, S any](conn T, dbType DbType, result *S, table string, idVal
 		rows.Close()
 		return nil
 	}
-	return fmt.Errorf("no record found for %s, %v", table, idValues)
+	return fmt.Errorf("no record found for %s, %v", table, pkMap)
 }
 
 func Create[T DB, S any](conn T, dbType DbType, data *S, table string) (map[string]int64, error) {
@@ -346,17 +343,13 @@ func SqlSafe(s *string) {
 	*s = strings.Replace(*s, "--", "", -1)
 }
 
-func StructFieldToDbField[T any](s *T) (fields []string, pks []string) {
+func StructFieldToDbField[T any](s *T) (fields []string) {
 	structValue := reflect.ValueOf(s).Elem()
 	for fieldIndex := 0; fieldIndex < structValue.NumField(); fieldIndex++ {
 		fieldTag := structValue.Type().Field(fieldIndex).Tag
 		dbTag := fieldTag.Get("db")
 		if dbTag != "" {
 			fields = append(fields, dbTag)
-		}
-		pkTag := fieldTag.Get("pk")
-		if pkTag == "true" {
-			pks = append(pks, dbTag)
 		}
 	}
 	return

@@ -65,20 +65,23 @@ func TestQueries(t *testing.T) {
 	assert.Equal(t, "Gamma", resultStructs[2].Name)
 	assert.Equal(t, 3, resultStructs[2].Id)
 
-	resultStruct := Test{}
-	err = Retrieve(db, SQLite, &resultStruct, "test", 1) // Retrieve
+	resultStruct := Test{Id: 1}
+	err = Retrieve(db, SQLite, &resultStruct, "test") // Retrieve
 	assert.NoError(t, err)
 	assert.Equal(t, "Alpha", resultStruct.Name)
 	assert.Equal(t, 1, resultStruct.Id)
-	err = Retrieve(db, SQLite, &resultStruct, "test", 2) // Retrieve
+	resultStruct.Id = 2
+	err = Retrieve(db, SQLite, &resultStruct, "test") // Retrieve
 	assert.NoError(t, err)
 	assert.Equal(t, "Beta", resultStruct.Name)
 	assert.Equal(t, 2, resultStruct.Id)
-	err = Retrieve(db, SQLite, &resultStruct, "test", 3) // Retrieve
+	resultStruct.Id = 3
+	err = Retrieve(db, SQLite, &resultStruct, "test") // Retrieve
 	assert.NoError(t, err)
 	assert.Equal(t, "Gamma", resultStruct.Name)
 	assert.Equal(t, 3, resultStruct.Id)
-	err = Retrieve(db, SQLite, &resultStruct, "test", 4) // Retrieve
+	resultStruct.Id = 4
+	err = Retrieve(db, SQLite, &resultStruct, "test") // Retrieve
 	assert.Error(t, err)
 
 	data := Test{Id: 4, Name: "Delta"}
@@ -87,7 +90,8 @@ func TestQueries(t *testing.T) {
 	assert.Equal(t, int64(4), result["last_insert_id"])
 	assert.Equal(t, int64(1), result["rows_affected"])
 
-	err = Retrieve(db, SQLite, &resultStruct, "test", 4) // Retrieve
+	resultStruct.Id = 4
+	err = Retrieve(db, SQLite, &resultStruct, "test") // Retrieve
 	assert.NoError(t, err)
 	assert.Equal(t, "Delta", resultStruct.Name)
 	assert.Equal(t, 4, resultStruct.Id)
@@ -98,7 +102,8 @@ func TestQueries(t *testing.T) {
 	assert.Equal(t, int64(4), result["last_insert_id"])
 	assert.Equal(t, int64(1), result["rows_affected"])
 
-	err = Retrieve(db, SQLite, &resultStruct, "test", 4) // Retrieve
+	resultStruct.Id = 4
+	err = Retrieve(db, SQLite, &resultStruct, "test") // Retrieve
 	assert.NoError(t, err)
 	assert.Equal(t, "Omega", resultStruct.Name)
 	assert.Equal(t, 4, resultStruct.Id)
@@ -108,17 +113,17 @@ func TestQueries(t *testing.T) {
 	assert.Equal(t, int64(4), result["last_insert_id"])
 	assert.Equal(t, int64(1), result["rows_affected"])
 
-	err = Retrieve(db, SQLite, &resultStruct, "test", 4) // Retrieve
+	resultStruct.Id = 4
+	err = Retrieve(db, SQLite, &resultStruct, "test") // Retrieve
 	assert.Error(t, err)
 }
 
 func TestReflect(t *testing.T) {
 	test := Test{Id: 1, Name: "test"}
 
-	fields, pks := StructFieldToDbField(&test)
+	fields := StructFieldToDbField(&test)
 	assert.Equal(t, "ID", fields[0])
 	assert.Equal(t, "NAME", fields[1])
-	assert.Equal(t, "ID", pks[0])
 
 	nonPkMap, pkMap := StructToDbMap(&test)
 	assert.Equal(t, "test", nonPkMap["NAME"])

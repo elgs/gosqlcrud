@@ -8,7 +8,7 @@ A Go library to work with SQL database using standard `database/sql` api. It sup
 
 ## Example
 
-Please note for `Exec`, `QueryToArrays`, `QueryToMaps`, `QueryToStructs`, you are responsible for preventing SQL injection. For `Retrieve`, `Create`, `Update`, `Delete`, the library will take care of it.
+Please note for `Exec`, `QueryToArrays`, `QueryToMaps`, `QueryToStructs`, you are responsible for preventing SQL injection in the SQL queries. For `Retrieve`, `Create`, `Update`, `Delete`, the library will take care of it.
 
 ```go
 package gosqlcrud

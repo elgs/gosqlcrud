@@ -391,7 +391,7 @@ func MapForSqlWhere(m map[string]any, startIndex int, dbType DbType) (where stri
 func GetPlaceHolder(index int, dbType DbType) string {
 	if dbType == PostgreSQL {
 		return fmt.Sprintf("$%d", index+1)
-	} else if dbType == MSSQLServer {
+	} else if dbType == SQLServer {
 		return fmt.Sprintf("@p%d", index+1)
 	} else if dbType == Oracle {
 		return fmt.Sprintf(":%d", index+1)
@@ -407,7 +407,7 @@ const (
 	SQLite
 	MySQL
 	PostgreSQL
-	MSSQLServer
+	SQLServer
 	Oracle
 )
 
@@ -435,10 +435,10 @@ func getDbType(conn DB) DbType {
 	if err == nil && len(v) > 0 {
 		version := strings.ToLower(fmt.Sprint(v[0]["version"]))
 		if strings.Contains(version, "microsoft") {
-			dbTypeMap[connPtrStr] = MSSQLServer
-			return MSSQLServer
+			dbTypeMap[connPtrStr] = SQLServer
+			return SQLServer
 		} else {
-			return Unknown
+			return MySQL
 		}
 	}
 

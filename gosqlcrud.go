@@ -415,7 +415,6 @@ var dbTypeMap = map[string]DbType{}
 
 func getDbType(conn DB) DbType {
 	connPtrStr := fmt.Sprintf("%p\n", conn)
-	// assuming the string representation of a pointer is unique and stays unchanged
 	if val, ok := dbTypeMap[connPtrStr]; ok {
 		return val
 	}

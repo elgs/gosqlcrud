@@ -2,6 +2,7 @@ package gosqlcrud
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -10,26 +11,7 @@ import (
 	"time"
 )
 
-const Version = "2"
-
-type DbType int
-
-const (
-	SQLite DbType = iota
-	MySQL
-	PostgreSQL
-	MSSQLServer
-	Oracle
-)
-
-type CaseType int
-
-const (
-	AsIs CaseType = iota
-	Lower
-	Upper
-	Camel
-)
+const Version = "3"
 
 type DB interface {
 	Query(query string, args ...any) (*sql.Rows, error)
@@ -37,7 +19,7 @@ type DB interface {
 }
 
 // QueryToArrays - run sql and return an array of arrays
-func QueryToArrays[T DB](conn T, theCase CaseType, sqlStatement string, sqlParams ...any) ([]string, [][]any, error) {
+func QueryToArrays[T DB](conn T, sqlStatement string, sqlParams ...any) ([]string, [][]any, error) {
 	data := [][]any{}
 	rows, err := conn.Query(sqlStatement, sqlParams...)
 	if err != nil {
@@ -52,13 +34,7 @@ func QueryToArrays[T DB](conn T, theCase CaseType, sqlStatement string, sqlParam
 	}
 	lenCols := len(cols)
 	for i, v := range cols {
-		if theCase == Lower {
-			cols[i] = strings.ToLower(v)
-		} else if theCase == Upper {
-			cols[i] = strings.ToUpper(v)
-		} else if theCase == Camel {
-			cols[i] = toCamel(v)
-		}
+		cols[i] = strings.ToLower(v)
 	}
 
 	rawResult := make([]any, lenCols)
@@ -74,29 +50,7 @@ func QueryToArrays[T DB](conn T, theCase CaseType, sqlStatement string, sqlParam
 		result := make([]any, lenCols)
 		rows.Scan(dest...)
 		for i, raw := range rawResult {
-			// faulty mysql driver workaround https://github.com/go-sql-driver/mysql/issues/1401
-			if v, ok := raw.([]byte); ok {
-				value := string(v)
-				switch colTypes[i].DatabaseTypeName() {
-				case "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "YEAR":
-					raw, _ = strconv.Atoi(value)
-				case "TINYINT", "BOOL", "BOOLEAN", "BIT":
-					raw, _ = strconv.ParseBool(value)
-				case "FLOAT", "DOUBLE", "DECIMAL":
-					raw, _ = strconv.ParseFloat(value, 64)
-				case "DATETIME", "TIMESTAMP":
-					raw, _ = time.Parse("2006-01-02 15:04:05", value)
-				case "DATE":
-					raw, _ = time.Parse("2006-01-02", value)
-				case "TIME":
-					raw, _ = time.Parse("15:04:05", value)
-				case "NULL":
-					raw = nil
-				default:
-					raw = value
-				}
-			}
-			result[i] = raw
+			result[i] = faultyMysqlDriverPatch(raw, colTypes[i].DatabaseTypeName())
 		}
 		data = append(data, result)
 	}
@@ -104,7 +58,7 @@ func QueryToArrays[T DB](conn T, theCase CaseType, sqlStatement string, sqlParam
 }
 
 // QueryToMaps - run sql and return an array of maps
-func QueryToMaps[T DB](conn T, theCase CaseType, sqlStatement string, sqlParams ...any) ([]map[string]any, error) {
+func QueryToMaps[T DB](conn T, sqlStatement string, sqlParams ...any) ([]map[string]any, error) {
 	results := []map[string]any{}
 	rows, err := conn.Query(sqlStatement, sqlParams...)
 	if err != nil {
@@ -120,13 +74,7 @@ func QueryToMaps[T DB](conn T, theCase CaseType, sqlStatement string, sqlParams 
 	lenCols := len(cols)
 
 	for i, v := range cols {
-		if theCase == Lower {
-			cols[i] = strings.ToLower(v)
-		} else if theCase == Upper {
-			cols[i] = strings.ToUpper(v)
-		} else if theCase == Camel {
-			cols[i] = toCamel(v)
-		}
+		cols[i] = strings.ToLower(v)
 	}
 
 	rawResult := make([]any, lenCols)
@@ -142,33 +90,37 @@ func QueryToMaps[T DB](conn T, theCase CaseType, sqlStatement string, sqlParams 
 		result := make(map[string]any, lenCols)
 		rows.Scan(dest...)
 		for i, raw := range rawResult {
-			// faulty mysql driver workaround https://github.com/go-sql-driver/mysql/issues/1401
-			if v, ok := raw.([]byte); ok {
-				value := string(v)
-				switch colTypes[i].DatabaseTypeName() {
-				case "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "YEAR":
-					raw, _ = strconv.Atoi(value)
-				case "TINYINT", "BOOL", "BOOLEAN", "BIT":
-					raw, _ = strconv.ParseBool(value)
-				case "FLOAT", "DOUBLE", "DECIMAL":
-					raw, _ = strconv.ParseFloat(value, 64)
-				case "DATETIME", "TIMESTAMP":
-					raw, _ = time.Parse("2006-01-02 15:04:05", value)
-				case "DATE":
-					raw, _ = time.Parse("2006-01-02", value)
-				case "TIME":
-					raw, _ = time.Parse("15:04:05", value)
-				case "NULL":
-					raw = nil
-				default:
-					raw = value
-				}
-			}
-			result[cols[i]] = raw
+			result[cols[i]] = faultyMysqlDriverPatch(raw, colTypes[i].DatabaseTypeName())
 		}
 		results = append(results, result)
 	}
 	return results, nil
+}
+
+// faulty mysql driver workaround https://github.com/go-sql-driver/mysql/issues/1401
+func faultyMysqlDriverPatch(raw any, colType string) any {
+	if v, ok := raw.([]byte); ok {
+		value := string(v)
+		switch colType {
+		case "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "YEAR":
+			raw, _ = strconv.Atoi(value)
+		case "TINYINT", "BOOL", "BOOLEAN", "BIT":
+			raw, _ = strconv.ParseBool(value)
+		case "FLOAT", "DOUBLE", "DECIMAL":
+			raw, _ = strconv.ParseFloat(value, 64)
+		case "DATETIME", "TIMESTAMP":
+			raw, _ = time.Parse("2006-01-02 15:04:05", value)
+		case "DATE":
+			raw, _ = time.Parse("2006-01-02", value)
+		case "TIME":
+			raw, _ = time.Parse("15:04:05", value)
+		case "NULL":
+			raw = nil
+		default:
+			raw = value
+		}
+	}
+	return raw
 }
 
 func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlParams ...any) error {
@@ -210,9 +162,13 @@ func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlP
 	return nil
 }
 
-func Retrieve[T DB, S any](conn T, dbType DbType, result *S, table string) error {
+func Retrieve[T DB, S any](conn T, result *S, table string) error {
 	fields := StructFieldToDbField(result)
 	_, pkMap := StructToDbMap(result)
+	dbType := getDbType(conn)
+	if dbType == Unknown {
+		return errors.New("unknown database type")
+	}
 	where, values, err := MapForSqlWhere(pkMap, 0, dbType)
 	if err != nil {
 		return err
@@ -259,10 +215,14 @@ func Retrieve[T DB, S any](conn T, dbType DbType, result *S, table string) error
 	return fmt.Errorf("no record found for %s, %v", table, pkMap)
 }
 
-func Create[T DB, S any](conn T, dbType DbType, data *S, table string) (map[string]int64, error) {
+func Create[T DB, S any](conn T, data *S, table string) (map[string]int64, error) {
 	fieldMap, pkMap := StructToDbMap(data)
 	for k, v := range pkMap {
 		fieldMap[k] = v
+	}
+	dbType := getDbType(conn)
+	if dbType == Unknown {
+		return nil, errors.New("unknown database type")
 	}
 	qms, keys, values, err := MapForSqlInsert(fieldMap, dbType)
 	if err != nil {
@@ -273,8 +233,12 @@ func Create[T DB, S any](conn T, dbType DbType, data *S, table string) (map[stri
 	return Exec(conn, sqlStatement, values...)
 }
 
-func Update[T DB, S any](conn T, dbType DbType, data *S, table string) (map[string]int64, error) {
+func Update[T DB, S any](conn T, data *S, table string) (map[string]int64, error) {
 	nonPkMap, pkMap := StructToDbMap(data)
+	dbType := getDbType(conn)
+	if dbType == Unknown {
+		return nil, errors.New("unknown database type")
+	}
 	setClause, setValues, err := MapForSqlUpdate(nonPkMap, dbType)
 	if err != nil {
 		return nil, err
@@ -288,8 +252,12 @@ func Update[T DB, S any](conn T, dbType DbType, data *S, table string) (map[stri
 	return Exec(conn, sqlStatement, values...)
 }
 
-func Delete[T DB, S any](conn T, dbType DbType, data *S, table string) (map[string]int64, error) {
+func Delete[T DB, S any](conn T, data *S, table string) (map[string]int64, error) {
 	_, pkMap := StructToDbMap(data)
+	dbType := getDbType(conn)
+	if dbType == Unknown {
+		return nil, errors.New("unknown database type")
+	}
 	where, whereValues, err := MapForSqlWhere(pkMap, 0, dbType)
 	if err != nil {
 		return nil, err
@@ -321,21 +289,6 @@ func Exec[T DB](conn T, sqlStatement string, sqlParams ...any) (map[string]int64
 		ret["last_insert_id"] = lastInsertId
 	}
 	return ret, nil
-}
-
-func toCamel(s string) (ret string) {
-	s = strings.ToLower(s)
-	a := strings.Split(s, "_")
-	for i, v := range a {
-		if i == 0 {
-			ret += v
-		} else {
-			f := strings.ToUpper(string(v[0]))
-			n := string(v[1:])
-			ret += fmt.Sprint(f, n)
-		}
-	}
-	return
 }
 
 func SqlSafe(s *string) {
@@ -445,4 +398,60 @@ func GetPlaceHolder(index int, dbType DbType) string {
 	} else {
 		return "?"
 	}
+}
+
+type DbType int
+
+const (
+	Unknown DbType = iota
+	SQLite
+	MySQL
+	PostgreSQL
+	MSSQLServer
+	Oracle
+)
+
+var dbTypeMap = map[DB]DbType{}
+
+func getDbType(conn DB) DbType {
+	if val, ok := dbTypeMap[conn]; ok {
+		return val
+	}
+
+	v, err := QueryToMaps(conn, "SELECT VERSION() AS version")
+	if err == nil && len(v) > 0 {
+		version := strings.ToLower(fmt.Sprint(v[0]["version"]))
+		if strings.Contains(version, "postgres") {
+			dbTypeMap[conn] = PostgreSQL
+			return PostgreSQL
+		} else {
+			dbTypeMap[conn] = MySQL
+			return MySQL
+		}
+	}
+
+	v, err = QueryToMaps(conn, "SELECT @@VERSION AS version")
+	if err == nil && len(v) > 0 {
+		version := strings.ToLower(fmt.Sprint(v[0]["version"]))
+		if strings.Contains(version, "microsoft") {
+			dbTypeMap[conn] = MSSQLServer
+			return MSSQLServer
+		} else {
+			return Unknown
+		}
+	}
+
+	v, err = QueryToMaps(conn, "SELECT * FROM v$version")
+	if err == nil && len(v) > 0 {
+		dbTypeMap[conn] = Oracle
+		return Oracle
+	}
+
+	v, err = QueryToMaps(conn, "SELECT sqlite_version()")
+	if err == nil && len(v) > 0 {
+		dbTypeMap[conn] = SQLite
+		return SQLite
+	}
+
+	return Unknown
 }

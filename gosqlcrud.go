@@ -165,7 +165,7 @@ func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlP
 func Retrieve[T DB, S any](conn T, result *S, table string) error {
 	fields := StructFieldToDbField(result)
 	_, pkMap := StructToDbMap(result)
-	dbType := getDbType(conn)
+	dbType := GetDbType(conn)
 	if dbType == Unknown {
 		return errors.New("unknown database type")
 	}
@@ -220,7 +220,7 @@ func Create[T DB, S any](conn T, data *S, table string) (map[string]int64, error
 	for k, v := range pkMap {
 		fieldMap[k] = v
 	}
-	dbType := getDbType(conn)
+	dbType := GetDbType(conn)
 	if dbType == Unknown {
 		return nil, errors.New("unknown database type")
 	}
@@ -235,7 +235,7 @@ func Create[T DB, S any](conn T, data *S, table string) (map[string]int64, error
 
 func Update[T DB, S any](conn T, data *S, table string) (map[string]int64, error) {
 	nonPkMap, pkMap := StructToDbMap(data)
-	dbType := getDbType(conn)
+	dbType := GetDbType(conn)
 	if dbType == Unknown {
 		return nil, errors.New("unknown database type")
 	}
@@ -254,7 +254,7 @@ func Update[T DB, S any](conn T, data *S, table string) (map[string]int64, error
 
 func Delete[T DB, S any](conn T, data *S, table string) (map[string]int64, error) {
 	_, pkMap := StructToDbMap(data)
-	dbType := getDbType(conn)
+	dbType := GetDbType(conn)
 	if dbType == Unknown {
 		return nil, errors.New("unknown database type")
 	}
@@ -413,7 +413,7 @@ const (
 
 var dbTypeMap = map[string]DbType{}
 
-func getDbType(conn DB) DbType {
+func GetDbType(conn DB) DbType {
 	connPtrStr := fmt.Sprintf("%p\n", conn)
 	if val, ok := dbTypeMap[connPtrStr]; ok {
 		return val

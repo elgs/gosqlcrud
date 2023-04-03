@@ -438,6 +438,7 @@ func GetDbType(conn DB) DbType {
 			dbTypeMap[connPtrStr] = SQLServer
 			return SQLServer
 		} else {
+			dbTypeMap[connPtrStr] = MySQL
 			return MySQL
 		}
 	}

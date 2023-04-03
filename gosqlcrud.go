@@ -411,10 +411,12 @@ const (
 	Oracle
 )
 
-var dbTypeMap = map[DB]DbType{}
+var dbTypeMap = map[string]DbType{}
 
 func getDbType(conn DB) DbType {
-	if val, ok := dbTypeMap[conn]; ok {
+	connPtrStr := fmt.Sprintf("%p\n", conn)
+	// assuming the string representation of a pointer is unique and stays unchanged
+	if val, ok := dbTypeMap[connPtrStr]; ok {
 		return val
 	}
 
@@ -422,10 +424,10 @@ func getDbType(conn DB) DbType {
 	if err == nil && len(v) > 0 {
 		version := strings.ToLower(fmt.Sprint(v[0]["version"]))
 		if strings.Contains(version, "postgres") {
-			dbTypeMap[conn] = PostgreSQL
+			dbTypeMap[connPtrStr] = PostgreSQL
 			return PostgreSQL
 		} else {
-			dbTypeMap[conn] = MySQL
+			dbTypeMap[connPtrStr] = MySQL
 			return MySQL
 		}
 	}
@@ -434,7 +436,7 @@ func getDbType(conn DB) DbType {
 	if err == nil && len(v) > 0 {
 		version := strings.ToLower(fmt.Sprint(v[0]["version"]))
 		if strings.Contains(version, "microsoft") {
-			dbTypeMap[conn] = MSSQLServer
+			dbTypeMap[connPtrStr] = MSSQLServer
 			return MSSQLServer
 		} else {
 			return Unknown
@@ -443,13 +445,13 @@ func getDbType(conn DB) DbType {
 
 	v, err = QueryToMaps(conn, "SELECT * FROM v$version")
 	if err == nil && len(v) > 0 {
-		dbTypeMap[conn] = Oracle
+		dbTypeMap[connPtrStr] = Oracle
 		return Oracle
 	}
 
 	v, err = QueryToMaps(conn, "SELECT sqlite_version()")
 	if err == nil && len(v) > 0 {
-		dbTypeMap[conn] = SQLite
+		dbTypeMap[connPtrStr] = SQLite
 		return SQLite
 	}
 

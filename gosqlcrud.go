@@ -457,3 +457,51 @@ func GetDbType(conn DB) DbType {
 
 	return Unknown
 }
+
+// func GetAllTables(conn DB) (tables []string, err error) {
+// 	dbType := GetDbType(conn)
+// 	if dbType == PostgreSQL {
+// 		tableMaps, err := QueryToMaps(conn, "SELECT table_name FROM information_schema.tables WHERE table_schema='public'")
+// 	} else if dbType == SQLServer {
+// 		tableMaps, err := QueryToMaps(conn, "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE'")
+// 	} else if dbType == Oracle {
+// 		tableMaps, err := QueryToMaps(conn, "SELECT table_name FROM user_tables")
+// 	} else if dbType == SQLite {
+// 		tableMaps, err := QueryToMaps(conn, "SELECT name FROM sqlite_master WHERE type='table'")
+// 	} else {
+// 		tableMaps, err := QueryToMaps(conn, "SHOW TABLES")
+// 	}
+// 	return
+// }
+
+// func GetTableColumns(conn DB, tableName string) (columns []string, err error) {
+// 	dbType := GetDbType(conn)
+// 	if dbType == PostgreSQL {
+// 		columnMaps, err := QueryToMaps(conn, "SELECT column_name FROM information_schema.columns WHERE table_name=$1", tableName)
+// 	} else if dbType == SQLServer {
+// 		columnMaps, err := QueryToMaps(conn, "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME=$1", tableName)
+// 	} else if dbType == Oracle {
+// 		columnMaps, err := QueryToMaps(conn, "SELECT column_name FROM user_tab_columns WHERE table_name=$1", tableName)
+// 	} else if dbType == SQLite {
+// 		columnMaps, err := QueryToMaps(conn, "PRAGMA table_info($1)", tableName)
+// 	} else {
+// 		columnMaps, err := QueryToMaps(conn, "SHOW COLUMNS FROM $1", tableName)
+// 	}
+// 	return
+// }
+
+// func GetTablePrimaryKeys(conn DB, tableName string) (primaryKeys []string, err error) {
+// 	dbType := GetDbType(conn)
+// 	if dbType == PostgreSQL {
+// 		pkMaps, err := QueryToMaps(conn, "SELECT column_name FROM information_schema.key_column_usage WHERE table_name=$1 AND constraint_name='PRIMARY KEY'", tableName)
+// 	} else if dbType == SQLServer {
+// 		pkMaps, err := QueryToMaps(conn, "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_NAME=$1 AND CONSTRAINT_NAME='PRIMARY'", tableName)
+// 	} else if dbType == Oracle {
+// 		pkMaps, err := QueryToMaps(conn, "SELECT column_name FROM user_cons_columns WHERE table_name=$1 AND constraint_name=(SELECT constraint_name FROM user_constraints WHERE table_name=$1 AND constraint_type='P')", tableName)
+// 	} else if dbType == SQLite {
+// 		pkMaps, err := QueryToMaps(conn, "PRAGMA table_info($1)", tableName)
+// 	} else {
+// 		pkMaps, err := QueryToMaps(conn, "SHOW KEYS FROM $1 WHERE Key_name='PRIMARY'", tableName)
+// 	}
+// 	return
+// }

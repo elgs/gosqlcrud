@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const Version = "4"
+const Version = "5"
 
 type DB interface {
 	Query(query string, args ...any) (*sql.Rows, error)

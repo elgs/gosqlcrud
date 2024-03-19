@@ -50,7 +50,7 @@ func QueryToArrays[T DB](conn T, sqlStatement string, sqlParams ...any) ([]strin
 		result := make([]any, lenCols)
 		rows.Scan(dest...)
 		for i, raw := range rawResult {
-			result[i] = faultyMysqlDriverPatch(raw, colTypes[i].DatabaseTypeName())
+			result[i] = faultyDriverPatches(raw, colTypes[i].DatabaseTypeName())
 		}
 		data = append(data, result)
 	}
@@ -90,7 +90,7 @@ func QueryToMaps[T DB](conn T, sqlStatement string, sqlParams ...any) ([]map[str
 		result := make(map[string]any, lenCols)
 		rows.Scan(dest...)
 		for i, raw := range rawResult {
-			result[cols[i]] = faultyMysqlDriverPatch(raw, colTypes[i].DatabaseTypeName())
+			result[cols[i]] = faultyDriverPatches(raw, colTypes[i].DatabaseTypeName())
 		}
 		results = append(results, result)
 	}
@@ -98,8 +98,11 @@ func QueryToMaps[T DB](conn T, sqlStatement string, sqlParams ...any) ([]map[str
 }
 
 // faulty mysql driver workaround https://github.com/go-sql-driver/mysql/issues/1401
-func faultyMysqlDriverPatch(raw any, colType string) any {
-	if v, ok := raw.([]byte); ok {
+// faulty oracle driver workaround https://github.com/sijms/go-ora/issues/533
+func faultyDriverPatches(raw any, colType string) any {
+	switch v := raw.(type) {
+	// for mysql
+	case []byte:
 		value := string(v)
 		switch colType {
 		case "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "YEAR":
@@ -118,6 +121,17 @@ func faultyMysqlDriverPatch(raw any, colType string) any {
 			raw = nil
 		default:
 			raw = value
+		}
+	// for oracle
+	case string:
+		// fmt.Println(colType, reflect.TypeOf(raw), raw)
+		switch colType {
+		case "NUMBER":
+			raw, _ = strconv.ParseFloat(v, 64)
+		case "DATE", "TIMESTAMP":
+			raw, _ = time.Parse("2006-01-02 15:04:05", v)
+		default:
+			raw = v
 		}
 	}
 	return raw

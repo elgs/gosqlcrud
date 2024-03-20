@@ -11,15 +11,17 @@ import (
 	"time"
 )
 
-const Version = "5"
+const Version = "6"
 
 type DB interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
 }
 
 // QueryToArrays - run sql and return an array of arrays
 func QueryToArrays[T DB](conn T, sqlStatement string, sqlParams ...any) ([]string, [][]any, error) {
+	dbType := GetDbType(conn)
 	data := [][]any{}
 	rows, err := conn.Query(sqlStatement, sqlParams...)
 	if err != nil {
@@ -50,7 +52,14 @@ func QueryToArrays[T DB](conn T, sqlStatement string, sqlParams ...any) ([]strin
 		result := make([]any, lenCols)
 		rows.Scan(dest...)
 		for i, raw := range rawResult {
-			result[i] = faultyDriverPatches(raw, colTypes[i].DatabaseTypeName())
+			if raw == nil {
+				result[i] = nil
+			} else {
+				result[i] = convertBytes(raw, colTypes[i].DatabaseTypeName())
+				if dbType == Oracle {
+					result[i] = convertStrings(raw, colTypes[i].DatabaseTypeName())
+				}
+			}
 		}
 		data = append(data, result)
 	}
@@ -59,6 +68,7 @@ func QueryToArrays[T DB](conn T, sqlStatement string, sqlParams ...any) ([]strin
 
 // QueryToMaps - run sql and return an array of maps
 func QueryToMaps[T DB](conn T, sqlStatement string, sqlParams ...any) ([]map[string]any, error) {
+	dbType := GetDbType(conn)
 	results := []map[string]any{}
 	rows, err := conn.Query(sqlStatement, sqlParams...)
 	if err != nil {
@@ -90,7 +100,14 @@ func QueryToMaps[T DB](conn T, sqlStatement string, sqlParams ...any) ([]map[str
 		result := make(map[string]any, lenCols)
 		rows.Scan(dest...)
 		for i, raw := range rawResult {
-			result[cols[i]] = faultyDriverPatches(raw, colTypes[i].DatabaseTypeName())
+			if raw == nil {
+				result[cols[i]] = nil
+			} else {
+				result[cols[i]] = convertBytes(raw, colTypes[i].DatabaseTypeName())
+				if dbType == Oracle {
+					result[cols[i]] = convertStrings(raw, colTypes[i].DatabaseTypeName())
+				}
+			}
 		}
 		results = append(results, result)
 	}
@@ -98,11 +115,8 @@ func QueryToMaps[T DB](conn T, sqlStatement string, sqlParams ...any) ([]map[str
 }
 
 // faulty mysql driver workaround https://github.com/go-sql-driver/mysql/issues/1401
-// faulty oracle driver workaround https://github.com/sijms/go-ora/issues/533
-func faultyDriverPatches(raw any, colType string) any {
-	switch v := raw.(type) {
-	// for mysql
-	case []byte:
+func convertBytes(raw any, colType string) any {
+	if v, ok := raw.([]byte); ok {
 		value := string(v)
 		switch colType {
 		case "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "YEAR":
@@ -122,9 +136,13 @@ func faultyDriverPatches(raw any, colType string) any {
 		default:
 			raw = value
 		}
-	// for oracle
-	case string:
-		// fmt.Println(colType, reflect.TypeOf(raw), raw)
+	}
+	return raw
+}
+
+// faulty oracle driver workaround https://github.com/sijms/go-ora/issues/533
+func convertStrings(raw any, colType string) any {
+	if v, ok := raw.(string); ok {
 		switch colType {
 		case "NUMBER":
 			raw, _ = strconv.ParseFloat(v, 64)
@@ -433,10 +451,10 @@ func GetDbType(conn DB) DbType {
 		return val
 	}
 
-	v, err := QueryToMaps(conn, "SELECT VERSION() AS version")
-	if err == nil && len(v) > 0 {
-		version := strings.ToLower(fmt.Sprint(v[0]["version"]))
-		if strings.Contains(version, "postgres") {
+	var v string
+	err := conn.QueryRow("SELECT VERSION() AS version").Scan(&v)
+	if err == nil {
+		if strings.Contains(strings.ToLower(v), "postgres") {
 			dbTypeMap[connPtrStr] = PostgreSQL
 			return PostgreSQL
 		} else {
@@ -445,10 +463,9 @@ func GetDbType(conn DB) DbType {
 		}
 	}
 
-	v, err = QueryToMaps(conn, "SELECT @@VERSION AS version")
-	if err == nil && len(v) > 0 {
-		version := strings.ToLower(fmt.Sprint(v[0]["version"]))
-		if strings.Contains(version, "microsoft") {
+	err = conn.QueryRow("SELECT @@VERSION AS version").Scan(&v)
+	if err == nil {
+		if strings.Contains(strings.ToLower(v), "microsoft") {
 			dbTypeMap[connPtrStr] = SQLServer
 			return SQLServer
 		} else {
@@ -457,18 +474,20 @@ func GetDbType(conn DB) DbType {
 		}
 	}
 
-	v, err = QueryToMaps(conn, "SELECT * FROM v$version")
-	if err == nil && len(v) > 0 {
-		dbTypeMap[connPtrStr] = Oracle
-		return Oracle
+	err = conn.QueryRow("SELECT BANNER FROM v$version").Scan(&v)
+	if err == nil {
+		if strings.Contains(strings.ToLower(v), "oracle") {
+			dbTypeMap[connPtrStr] = Oracle
+			return Oracle
+		}
 	}
-
-	v, err = QueryToMaps(conn, "SELECT sqlite_version()")
-	if err == nil && len(v) > 0 {
+	err = conn.QueryRow("SELECT sqlite_version()").Scan(&v)
+	if err == nil {
 		dbTypeMap[connPtrStr] = SQLite
 		return SQLite
 	}
 
+	dbTypeMap[connPtrStr] = Unknown
 	return Unknown
 }
 

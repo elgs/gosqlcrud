@@ -2,6 +2,7 @@ package gosqlcrud
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -131,6 +132,8 @@ func convertBytes(raw any, colType string) any {
 			raw, _ = time.Parse("2006-01-02", value)
 		case "TIME":
 			raw, _ = time.Parse("15:04:05", value)
+		case "JSON":
+			raw = json.RawMessage(value)
 		case "NULL":
 			raw = nil
 		default:

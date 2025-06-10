@@ -56,9 +56,19 @@ func QueryToArrays[T DB](conn T, sqlStatement string, sqlParams ...any) ([]strin
 			if raw == nil {
 				result[i] = nil
 			} else {
-				result[i] = convertBytes(raw, colTypes[i].DatabaseTypeName())
+				colType := colTypes[i].DatabaseTypeName()
+				result[i] = convertBytes(raw, colType)
 				if dbType == Oracle {
-					result[i] = convertStrings(raw, colTypes[i].DatabaseTypeName())
+					result[i] = convertStrings(raw, colType)
+				} else if dbType == SQLite {
+					// in sqlite, json columns fall here, if columnName contains "json" case insensitively
+					if colType == "" {
+						if v, ok := raw.(string); ok {
+							if strings.Contains(strings.ToLower(cols[i]), "json") {
+								result[i] = json.RawMessage(v)
+							}
+						}
+					}
 				}
 			}
 		}
@@ -104,9 +114,19 @@ func QueryToMaps[T DB](conn T, sqlStatement string, sqlParams ...any) ([]map[str
 			if raw == nil {
 				result[cols[i]] = nil
 			} else {
-				result[cols[i]] = convertBytes(raw, colTypes[i].DatabaseTypeName())
+				colType := colTypes[i].DatabaseTypeName()
+				result[cols[i]] = convertBytes(raw, colType)
 				if dbType == Oracle {
-					result[cols[i]] = convertStrings(raw, colTypes[i].DatabaseTypeName())
+					result[cols[i]] = convertStrings(raw, colType)
+				} else if dbType == SQLite {
+					// in sqlite, json columns fall here, if columnName contains "json" case insensitively
+					if colType == "" {
+						if v, ok := raw.(string); ok {
+							if strings.Contains(strings.ToLower(cols[i]), "json") {
+								result[cols[i]] = json.RawMessage(v)
+							}
+						}
+					}
 				}
 			}
 		}

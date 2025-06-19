@@ -69,7 +69,7 @@ func QueryToArrays[T DB](conn T, sqlStatement string, sqlParams ...any) ([]strin
 								var a any
 								err := json.Unmarshal([]byte(_v), &a)
 								if err == nil {
-									result[i] = json.RawMessage(v)
+									result[i] = &a
 								}
 							}
 						}
@@ -132,7 +132,7 @@ func QueryToMaps[T DB](conn T, sqlStatement string, sqlParams ...any) ([]map[str
 								var a any
 								err := json.Unmarshal([]byte(_v), &a)
 								if err == nil {
-									result[cols[i]] = json.RawMessage(v)
+									result[cols[i]] = &a
 								}
 							}
 						}

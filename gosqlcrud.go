@@ -63,10 +63,14 @@ func QueryToArrays[T DB](conn T, sqlStatement string, sqlParams ...any) ([]strin
 				} else if dbType == SQLite {
 					// in sqlite, json columns fall here, if columnName contains "json" case insensitively
 					if v, ok := raw.(string); ok {
-						if strings.Contains(strings.ToLower(cols[i]), "json") {
+						if colType == "" {
 							_v := strings.TrimSpace(v)
 							if strings.HasPrefix(_v, "{") && strings.HasSuffix(_v, "}") || strings.HasPrefix(_v, "[") && strings.HasSuffix(_v, "]") {
-								result[i] = json.RawMessage(v)
+								var a any
+								err := json.Unmarshal([]byte(_v), &a)
+								if err == nil {
+									result[i] = json.RawMessage(v)
+								}
 							}
 						}
 					}
@@ -122,10 +126,14 @@ func QueryToMaps[T DB](conn T, sqlStatement string, sqlParams ...any) ([]map[str
 				} else if dbType == SQLite {
 					// in sqlite, json columns fall here, if columnName contains "json" case insensitively
 					if v, ok := raw.(string); ok {
-						if strings.Contains(strings.ToLower(cols[i]), "json") {
+						if colType == "" {
 							_v := strings.TrimSpace(v)
 							if strings.HasPrefix(_v, "{") && strings.HasSuffix(_v, "}") || strings.HasPrefix(_v, "[") && strings.HasSuffix(_v, "]") {
-								result[cols[i]] = json.RawMessage(v)
+								var a any
+								err := json.Unmarshal([]byte(_v), &a)
+								if err == nil {
+									result[cols[i]] = json.RawMessage(v)
+								}
 							}
 						}
 					}

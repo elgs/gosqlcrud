@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -477,6 +478,7 @@ const (
 )
 
 var dbTypeMap = map[string]DbType{}
+var mutex = sync.RWMutex{}
 
 func GetDbType(conn DB) DbType {
 	connPtrStr := fmt.Sprintf("%p\n", conn)
@@ -488,10 +490,14 @@ func GetDbType(conn DB) DbType {
 	err := conn.QueryRow("SELECT VERSION() AS version").Scan(&v)
 	if err == nil {
 		if strings.Contains(strings.ToLower(v), "postgres") {
+			mutex.Lock()
 			dbTypeMap[connPtrStr] = PostgreSQL
+			mutex.Unlock()
 			return PostgreSQL
 		} else {
+			mutex.Lock()
 			dbTypeMap[connPtrStr] = MySQL
+			mutex.Unlock()
 			return MySQL
 		}
 	}
@@ -499,10 +505,14 @@ func GetDbType(conn DB) DbType {
 	err = conn.QueryRow("SELECT @@VERSION AS version").Scan(&v)
 	if err == nil {
 		if strings.Contains(strings.ToLower(v), "microsoft") {
+			mutex.Lock()
 			dbTypeMap[connPtrStr] = SQLServer
+			mutex.Unlock()
 			return SQLServer
 		} else {
+			mutex.Lock()
 			dbTypeMap[connPtrStr] = MySQL
+			mutex.Unlock()
 			return MySQL
 		}
 	}
@@ -510,17 +520,23 @@ func GetDbType(conn DB) DbType {
 	err = conn.QueryRow("SELECT BANNER FROM v$version").Scan(&v)
 	if err == nil {
 		if strings.Contains(strings.ToLower(v), "oracle") {
+			mutex.Lock()
 			dbTypeMap[connPtrStr] = Oracle
+			mutex.Unlock()
 			return Oracle
 		}
 	}
 	err = conn.QueryRow("SELECT sqlite_version()").Scan(&v)
 	if err == nil {
+		mutex.Lock()
 		dbTypeMap[connPtrStr] = SQLite
+		mutex.Unlock()
 		return SQLite
 	}
 
+	mutex.Lock()
 	dbTypeMap[connPtrStr] = Unknown
+	mutex.Unlock()
 	return Unknown
 }
 

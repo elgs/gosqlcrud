@@ -18,25 +18,25 @@ func TestQueries(t *testing.T) {
 	assert.NoError(t, err)
 	result, err := Exec(db, "CREATE TABLE test (ID INTEGER PRIMARY KEY, NAME TEXT)") // Exec
 	assert.NoError(t, err)
-	assert.Equal(t, int64(0), result["last_insert_id"])
-	assert.Equal(t, int64(0), result["rows_affected"])
+	assert.Equal(t, int64(0), result.LastInsertId)
+	assert.Equal(t, int64(0), result.RowsAffected)
 
 	tx, err := db.Begin()
 	assert.NoError(t, err)
 	result, err = Exec(tx, "INSERT INTO test (ID, NAME) VALUES (?, ?)", 1, "Alpha") // Exec
 	assert.NoError(t, err)
-	assert.Equal(t, int64(1), result["last_insert_id"])
-	assert.Equal(t, int64(1), result["rows_affected"])
+	assert.Equal(t, int64(1), result.LastInsertId)
+	assert.Equal(t, int64(1), result.RowsAffected)
 
 	result, err = Exec(tx, "INSERT INTO test (ID, NAME) VALUES (?, ?)", 2, "Beta") // Exec
 	assert.NoError(t, err)
-	assert.Equal(t, int64(2), result["last_insert_id"])
-	assert.Equal(t, int64(1), result["rows_affected"])
+	assert.Equal(t, int64(2), result.LastInsertId)
+	assert.Equal(t, int64(1), result.RowsAffected)
 
 	result, err = Exec(tx, "INSERT INTO test (ID, NAME) VALUES (?, ?)", 3, "Gamma") // Exec
 	assert.NoError(t, err)
-	assert.Equal(t, int64(3), result["last_insert_id"])
-	assert.Equal(t, int64(1), result["rows_affected"])
+	assert.Equal(t, int64(3), result.LastInsertId)
+	assert.Equal(t, int64(1), result.RowsAffected)
 	tx.Commit()
 
 	cols, resultArray, err := QueryToArrays(db, "SELECT * FROM test WHERE ID > ?", 1) // QueryToArrays
@@ -87,8 +87,8 @@ func TestQueries(t *testing.T) {
 	data := Test{Id: 4, Name: "Delta"}
 	result, err = Create(db, &data, "test") // Create
 	assert.NoError(t, err)
-	assert.Equal(t, int64(4), result["last_insert_id"])
-	assert.Equal(t, int64(1), result["rows_affected"])
+	assert.Equal(t, int64(4), result.LastInsertId)
+	assert.Equal(t, int64(1), result.RowsAffected)
 
 	resultStruct.Id = 4
 	err = Retrieve(db, &resultStruct, "test") // Retrieve
@@ -99,8 +99,8 @@ func TestQueries(t *testing.T) {
 	data.Name = "Omega"
 	result, err = Update(db, &data, "test") // Update
 	assert.NoError(t, err)
-	assert.Equal(t, int64(4), result["last_insert_id"])
-	assert.Equal(t, int64(1), result["rows_affected"])
+	assert.Equal(t, int64(4), result.LastInsertId)
+	assert.Equal(t, int64(1), result.RowsAffected)
 
 	resultStruct.Id = 4
 	err = Retrieve(db, &resultStruct, "test") // Retrieve
@@ -110,8 +110,8 @@ func TestQueries(t *testing.T) {
 
 	result, err = Delete(db, &data, "test") // Delete
 	assert.NoError(t, err)
-	assert.Equal(t, int64(4), result["last_insert_id"])
-	assert.Equal(t, int64(1), result["rows_affected"])
+	assert.Equal(t, int64(4), result.LastInsertId)
+	assert.Equal(t, int64(1), result.RowsAffected)
 
 	resultStruct.Id = 4
 	err = Retrieve(db, &resultStruct, "test") // Retrieve

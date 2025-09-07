@@ -21,6 +21,11 @@ type DB interface {
 	QueryRow(query string, args ...any) *sql.Row
 }
 
+type DBResult struct {
+	RowsAffected int64 `json:"rows_affected"`
+	LastInsertId int64 `json:"last_insert_id"`
+}
+
 // QueryToArrays - run sql and return an array of arrays
 func QueryToArrays[T DB](conn T, sqlStatement string, sqlParams ...any) ([]string, [][]any, error) {
 	dbType := GetDbType(conn)
@@ -281,7 +286,7 @@ func Retrieve[T DB, S any](conn T, result *S, table string) error {
 	return fmt.Errorf("no record found for %s, %v", table, pkMap)
 }
 
-func Create[T DB, S any](conn T, data *S, table string) (map[string]int64, error) {
+func Create[T DB, S any](conn T, data *S, table string) (*DBResult, error) {
 	fieldMap, pkMap := StructToDbMap(data)
 	for k, v := range pkMap {
 		fieldMap[k] = v
@@ -299,7 +304,7 @@ func Create[T DB, S any](conn T, data *S, table string) (map[string]int64, error
 	return Exec(conn, sqlStatement, values...)
 }
 
-func Update[T DB, S any](conn T, data *S, table string) (map[string]int64, error) {
+func Update[T DB, S any](conn T, data *S, table string) (*DBResult, error) {
 	nonPkMap, pkMap := StructToDbMap(data)
 	dbType := GetDbType(conn)
 	if dbType == Unknown {
@@ -318,7 +323,7 @@ func Update[T DB, S any](conn T, data *S, table string) (map[string]int64, error
 	return Exec(conn, sqlStatement, values...)
 }
 
-func Delete[T DB, S any](conn T, data *S, table string) (map[string]int64, error) {
+func Delete[T DB, S any](conn T, data *S, table string) (*DBResult, error) {
 	_, pkMap := StructToDbMap(data)
 	dbType := GetDbType(conn)
 	if dbType == Unknown {
@@ -334,7 +339,7 @@ func Delete[T DB, S any](conn T, data *S, table string) (map[string]int64, error
 }
 
 // Exec - run sql and return the number of rows affected
-func Exec[T DB](conn T, sqlStatement string, sqlParams ...any) (map[string]int64, error) {
+func Exec[T DB](conn T, sqlStatement string, sqlParams ...any) (*DBResult, error) {
 	result, err := conn.Exec(sqlStatement, sqlParams...)
 	if err != nil {
 		if os.Getenv("env") == "dev" {
@@ -347,12 +352,12 @@ func Exec[T DB](conn T, sqlStatement string, sqlParams ...any) (map[string]int64
 	if err != nil {
 		return nil, err
 	}
-	ret := map[string]int64{
-		"rows_affected": rowsffected,
+	ret := &DBResult{
+		RowsAffected: rowsffected,
 	}
 	lastInsertId, err := result.LastInsertId()
 	if err == nil {
-		ret["last_insert_id"] = lastInsertId
+		ret.LastInsertId = lastInsertId
 	}
 	return ret, nil
 }

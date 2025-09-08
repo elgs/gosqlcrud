@@ -22,8 +22,9 @@ import (
 )
 
 type Test struct {
-	Id   int    `db:"ID" pk:"true"`
-	Name string `db:"NAME"`
+	Id   int     `db:"ID" pk:"true"`
+	Name *string `db:"NAME"`
+	// use pointer type so when Name is nil, it won't be included in the INSERT or UPDATE statements
 }
 
 func TestQueries(t *testing.T) {
@@ -96,11 +97,11 @@ func TestQueries(t *testing.T) {
 	resultStructs := []Test{}
 	err = QueryToStructs(db, &resultStructs, "SELECT NAME,ID FROM test WHERE ID > ?", 0) // QueryToStructs
 	assert.NoError(t, err)
-	assert.Equal(t, "Alpha", resultStructs[0].Name)
+	assert.Equal(t, "Alpha", *resultStructs[0].Name)
 	assert.Equal(t, 1, resultStructs[0].Id)
-	assert.Equal(t, "Beta", resultStructs[1].Name)
+	assert.Equal(t, "Beta", *resultStructs[1].Name)
 	assert.Equal(t, 2, resultStructs[1].Id)
-	assert.Equal(t, "Gamma", resultStructs[2].Name)
+	assert.Equal(t, "Gamma", *resultStructs[2].Name)
 	assert.Equal(t, 3, resultStructs[2].Id)
 
 	////////////////////
@@ -112,17 +113,17 @@ func TestQueries(t *testing.T) {
 	resultStruct := Test{Id: 1}
 	err = Retrieve(db, &resultStruct, "test") // Retrieve
 	assert.NoError(t, err)
-	assert.Equal(t, "Alpha", resultStruct.Name)
+	assert.Equal(t, "Alpha", *resultStruct.Name)
 	assert.Equal(t, 1, resultStruct.Id)
 	resultStruct.Id = 2
 	err = Retrieve(db, &resultStruct, "test") // Retrieve
 	assert.NoError(t, err)
-	assert.Equal(t, "Beta", resultStruct.Name)
+	assert.Equal(t, "Beta", *resultStruct.Name)
 	assert.Equal(t, 2, resultStruct.Id)
 	resultStruct.Id = 3
 	err = Retrieve(db, &resultStruct, "test") // Retrieve
 	assert.NoError(t, err)
-	assert.Equal(t, "Gamma", resultStruct.Name)
+	assert.Equal(t, "Gamma", *resultStruct.Name)
 	assert.Equal(t, 3, resultStruct.Id)
 	resultStruct.Id = 4
 	err = Retrieve(db, &resultStruct, "test") // Retrieve
@@ -134,7 +135,8 @@ func TestQueries(t *testing.T) {
 	//              //
 	//////////////////
 
-	data := Test{Id: 4, Name: "Delta"}
+	name := "Delta"
+	data := Test{Id: 4, Name: &name}
 	result, err = Create(db, &data, "test") // Create
 	assert.NoError(t, err)
 	assert.Equal(t, int64(4), result.LastInsertId)
@@ -143,7 +145,7 @@ func TestQueries(t *testing.T) {
 	resultStruct.Id = 4
 	err = Retrieve(db, &resultStruct, "test") // Retrieve
 	assert.NoError(t, err)
-	assert.Equal(t, "Delta", resultStruct.Name)
+	assert.Equal(t, "Delta", *resultStruct.Name)
 	assert.Equal(t, 4, resultStruct.Id)
 
 	//////////////////
@@ -152,7 +154,8 @@ func TestQueries(t *testing.T) {
 	//              //
 	//////////////////
 
-	data.Name = "Omega"
+	name = "Omega"
+	*data.Name = name
 	result, err = Update(db, &data, "test") // Update
 	assert.NoError(t, err)
 	assert.Equal(t, int64(4), result.LastInsertId)
@@ -161,7 +164,18 @@ func TestQueries(t *testing.T) {
 	resultStruct.Id = 4
 	err = Retrieve(db, &resultStruct, "test") // Retrieve
 	assert.NoError(t, err)
-	assert.Equal(t, "Omega", resultStruct.Name)
+	assert.Equal(t, name, *resultStruct.Name)
+	assert.Equal(t, 4, resultStruct.Id)
+
+	data.Name = nil
+	result, err = Update(db, &data, "test") // Update
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), result.RowsAffected)
+
+	resultStruct.Id = 4
+	err = Retrieve(db, &resultStruct, "test") // Retrieve
+	assert.NoError(t, err)
+	assert.Equal(t, name, *resultStruct.Name)
 	assert.Equal(t, 4, resultStruct.Id)
 
 	//////////////////
@@ -178,5 +192,33 @@ func TestQueries(t *testing.T) {
 	resultStruct.Id = 4
 	err = Retrieve(db, &resultStruct, "test") // Retrieve
 	assert.Error(t, err)
+}
+
+func TestReflect(t *testing.T) {
+	name := "test"
+	test := Test{Id: 1, Name: &name}
+
+	fields := StructFieldToDbField(&test)
+	assert.Equal(t, "ID", fields[0])
+	assert.Equal(t, "NAME", fields[1])
+
+	nonPkMap, pkMap := StructToDbMap(&test)
+	assert.Equal(t, "test", *nonPkMap["NAME"].(*string))
+	assert.Equal(t, 1, pkMap["ID"])
+}
+
+func TestSqlSafe(t *testing.T) {
+	ss := []string{
+		"asdf",
+		"asdf'asdf",
+		"asdf--asdf",
+	}
+	for i := range ss {
+		SqlSafe(&ss[i])
+	}
+
+	assert.Equal(t, "asdf", ss[0])
+	assert.Equal(t, "asdf''asdf", ss[1])
+	assert.Equal(t, "asdfasdf", ss[2])
 }
 ```

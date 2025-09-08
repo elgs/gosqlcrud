@@ -299,6 +299,12 @@ func Create[T DB, S any](conn T, data *S, table string) (*DBResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	if qms == "" || keys == "" || len(values) == 0 {
+		return &DBResult{
+			RowsAffected: 0,
+			LastInsertId: 0,
+		}, nil
+	}
 	SqlSafe(&table)
 	sqlStatement := fmt.Sprintf(`INSERT INTO %s (%s) VALUES (%s)`, table, keys, qms)
 	return Exec(conn, sqlStatement, values...)
@@ -313,6 +319,12 @@ func Update[T DB, S any](conn T, data *S, table string) (*DBResult, error) {
 	setClause, setValues, err := MapForSqlUpdate(nonPkMap, dbType)
 	if err != nil {
 		return nil, err
+	}
+	if setClause == "" || len(setValues) == 0 {
+		return &DBResult{
+			RowsAffected: 0,
+			LastInsertId: 0,
+		}, nil
 	}
 	where, whereValues, err := MapForSqlWhere(pkMap, len(nonPkMap), dbType)
 	if err != nil {
@@ -389,9 +401,13 @@ func StructToDbMap[T any](s *T) (nonPkMap map[string]any, pkMap map[string]any) 
 			continue
 		}
 		fieldTag := structValue.Type().Field(fieldIndex).Tag
-		value := structValue.Field(fieldIndex).Interface()
+		valueField := structValue.Field(fieldIndex)
+		value := valueField.Interface()
 		pkTag := fieldTag.Get("pk")
 		dbTag := fieldTag.Get("db")
+		if valueField.Kind() == reflect.Ptr && valueField.IsNil() {
+			continue
+		}
 		if dbTag != "" && pkTag != "true" {
 			nonPkMap[dbTag] = value
 		}
@@ -405,7 +421,7 @@ func StructToDbMap[T any](s *T) (nonPkMap map[string]any, pkMap map[string]any) 
 func MapForSqlInsert(m map[string]any, dbType DbType) (placeholders string, keys string, values []any, err error) {
 	length := len(m)
 	if length == 0 {
-		return "", "", nil, fmt.Errorf("empty parameter map")
+		return
 	}
 
 	for i := 0; i < length; i++ {
@@ -428,7 +444,7 @@ func MapForSqlInsert(m map[string]any, dbType DbType) (placeholders string, keys
 func MapForSqlUpdate(m map[string]any, dbType DbType) (set string, values []any, err error) {
 	length := len(m)
 	if length == 0 {
-		return "", nil, fmt.Errorf("empty parameter map")
+		return
 	}
 
 	values = make([]any, length)

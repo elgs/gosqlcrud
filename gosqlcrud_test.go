@@ -16,6 +16,13 @@ type Test struct {
 func TestQueries(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	assert.NoError(t, err)
+
+	////////////////
+	//            //
+	//    Exec    //
+	//            //
+	////////////////
+
 	result, err := Exec(db, "CREATE TABLE test (ID INTEGER PRIMARY KEY, NAME TEXT)") // Exec
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), result.LastInsertId)
@@ -39,6 +46,12 @@ func TestQueries(t *testing.T) {
 	assert.Equal(t, int64(1), result.RowsAffected)
 	tx.Commit()
 
+	/////////////////////////
+	//                     //
+	//    QueryToArrays    //
+	//                     //
+	/////////////////////////
+
 	cols, resultArray, err := QueryToArrays(db, "SELECT * FROM test WHERE ID > ?", 1) // QueryToArrays
 	assert.NoError(t, err)
 	assert.Equal(t, "id", cols[0])
@@ -48,12 +61,24 @@ func TestQueries(t *testing.T) {
 	assert.Equal(t, int64(3), resultArray[1][0])
 	assert.Equal(t, "Gamma", resultArray[1][1])
 
+	///////////////////////
+	//                   //
+	//    QueryToMaps    //
+	//                   //
+	///////////////////////
+
 	resultMaps, err := QueryToMaps(db, "SELECT * FROM test WHERE ID < ?", 3) // QueryToMaps
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), resultMaps[0]["id"])
 	assert.Equal(t, "Alpha", resultMaps[0]["name"])
 	assert.Equal(t, int64(2), resultMaps[1]["id"])
 	assert.Equal(t, "Beta", resultMaps[1]["name"])
+
+	//////////////////////////
+	//                      //
+	//    QueryToStructs    //
+	//                      //
+	//////////////////////////
 
 	resultStructs := []Test{}
 	err = QueryToStructs(db, &resultStructs, "SELECT NAME,ID FROM test WHERE ID > ?", 0) // QueryToStructs
@@ -64,6 +89,12 @@ func TestQueries(t *testing.T) {
 	assert.Equal(t, 2, resultStructs[1].Id)
 	assert.Equal(t, "Gamma", resultStructs[2].Name)
 	assert.Equal(t, 3, resultStructs[2].Id)
+
+	////////////////////
+	//                //
+	//    Retrieve    //
+	//                //
+	////////////////////
 
 	resultStruct := Test{Id: 1}
 	err = Retrieve(db, &resultStruct, "test") // Retrieve
@@ -84,6 +115,12 @@ func TestQueries(t *testing.T) {
 	err = Retrieve(db, &resultStruct, "test") // Retrieve
 	assert.Error(t, err)
 
+	//////////////////
+	//              //
+	//    Create    //
+	//              //
+	//////////////////
+
 	data := Test{Id: 4, Name: "Delta"}
 	result, err = Create(db, &data, "test") // Create
 	assert.NoError(t, err)
@@ -96,6 +133,12 @@ func TestQueries(t *testing.T) {
 	assert.Equal(t, "Delta", resultStruct.Name)
 	assert.Equal(t, 4, resultStruct.Id)
 
+	//////////////////
+	//              //
+	//    Update    //
+	//              //
+	//////////////////
+
 	data.Name = "Omega"
 	result, err = Update(db, &data, "test") // Update
 	assert.NoError(t, err)
@@ -107,6 +150,12 @@ func TestQueries(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "Omega", resultStruct.Name)
 	assert.Equal(t, 4, resultStruct.Id)
+
+	//////////////////
+	//              //
+	//    Delete    //
+	//              //
+	//////////////////
 
 	result, err = Delete(db, &data, "test") // Delete
 	assert.NoError(t, err)

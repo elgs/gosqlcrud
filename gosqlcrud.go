@@ -384,6 +384,10 @@ func StructToDbMap[T any](s *T) (nonPkMap map[string]any, pkMap map[string]any) 
 	pkMap = make(map[string]any)
 	structValue := reflect.ValueOf(s).Elem()
 	for fieldIndex := 0; fieldIndex < structValue.NumField(); fieldIndex++ {
+		var field = structValue.Type().Field(fieldIndex)
+		if !field.IsExported() {
+			continue
+		}
 		fieldTag := structValue.Type().Field(fieldIndex).Tag
 		value := structValue.Field(fieldIndex).Interface()
 		pkTag := fieldTag.Get("pk")

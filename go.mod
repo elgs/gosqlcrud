@@ -1,6 +1,6 @@
 module github.com/elgs/gosqlcrud
 
-go 1.25.1
+go 1.25
 
 require (
 	github.com/stretchr/testify v1.11.1

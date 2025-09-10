@@ -64,9 +64,10 @@ func QueryToArrays[T DB](conn T, sqlStatement string, sqlParams ...any) ([]strin
 			} else {
 				colType := colTypes[i].DatabaseTypeName()
 				result[i] = convertBytes(raw, colType)
-				if dbType == Oracle {
+				switch dbType {
+				case Oracle:
 					result[i] = convertStrings(raw, colType)
-				} else if dbType == SQLite {
+				case SQLite:
 					// in sqlite, json columns fall here, if columnName contains "json" case insensitively
 					if v, ok := raw.(string); ok {
 						if colType == "" {
@@ -127,9 +128,10 @@ func QueryToMaps[T DB](conn T, sqlStatement string, sqlParams ...any) ([]map[str
 			} else {
 				colType := colTypes[i].DatabaseTypeName()
 				result[cols[i]] = convertBytes(raw, colType)
-				if dbType == Oracle {
+				switch dbType {
+				case Oracle:
 					result[cols[i]] = convertStrings(raw, colType)
-				} else if dbType == SQLite {
+				case SQLite:
 					// in sqlite, json columns fall here, if columnName contains "json" case insensitively
 					if v, ok := raw.(string); ok {
 						if colType == "" {
@@ -194,6 +196,21 @@ func convertStrings(raw any, colType string) any {
 	return raw
 }
 
+// isPrimitiveType returns true if the type is a Go primitive, time.Time, or pointer to one of those.
+func isPrimitiveType(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.String, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
+		return true
+	case reflect.Pointer:
+		elemType := t.Elem()
+		return isPrimitiveType(elemType) || elemType == reflect.TypeOf(time.Time{})
+	case reflect.Struct:
+		return t == reflect.TypeOf(time.Time{})
+	}
+	return false
+}
+
 func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlParams ...any) error {
 	rows, err := conn.Query(sqlStatement, sqlParams...)
 	if err != nil {
@@ -208,25 +225,65 @@ func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlP
 	}
 	lenCols := len(cols)
 
-	for rows.Next() { // iterate through rows
-		colValues := make([]any, lenCols)
-		var result S
-		structValue := reflect.ValueOf(&result).Elem()
-		for colIndex, colName := range cols { // iterate through columns
-			found := false
-			for fieldIndex := 0; fieldIndex < structValue.NumField(); fieldIndex++ { // iterate through struct fields
-				dbTag := structValue.Type().Field(fieldIndex).Tag.Get("db")
-				if strings.EqualFold(colName, dbTag) {
-					colValues[colIndex] = structValue.Field(fieldIndex).Addr().Interface()
-					found = true
-					break
+	// Build a mapping from column index to struct field index and type
+	type fieldInfo struct {
+		fieldIndex  int
+		isPrimitive bool
+	}
+	structType := reflect.TypeOf((*S)(nil)).Elem()
+	colToField := make([]fieldInfo, lenCols)
+	for colIndex, colName := range cols {
+		found := false
+		for fieldIndex := 0; fieldIndex < structType.NumField(); fieldIndex++ {
+			dbTag := structType.Field(fieldIndex).Tag.Get("db")
+			if strings.EqualFold(colName, dbTag) {
+				colToField[colIndex] = fieldInfo{
+					fieldIndex:  fieldIndex,
+					isPrimitive: isPrimitiveType(structType.Field(fieldIndex).Type),
 				}
-			}
-			if !found {
-				colValues[colIndex] = new(any)
+				found = true
+				break
 			}
 		}
-		rows.Scan(colValues...)
+		if !found {
+			colToField[colIndex] = fieldInfo{
+				fieldIndex:  -1,
+				isPrimitive: false,
+			}
+		}
+	}
+
+	for rows.Next() {
+		var result S
+		structValue := reflect.ValueOf(&result).Elem()
+		fieldPtrs := make([]any, lenCols)
+		tmpStrings := make([]*string, lenCols) // for non-primitives
+		for colIndex, info := range colToField {
+			if info.fieldIndex == -1 {
+				fieldPtrs[colIndex] = new(any)
+				continue
+			}
+			field := structValue.Field(info.fieldIndex)
+			if info.isPrimitive {
+				fieldPtrs[colIndex] = field.Addr().Interface()
+			} else {
+				tmp := new(string)
+				tmpStrings[colIndex] = tmp
+				fieldPtrs[colIndex] = tmp
+			}
+		}
+		rows.Scan(fieldPtrs...)
+		// Unmarshal JSON for non-primitive fields
+		for colIndex, info := range colToField {
+			if info.fieldIndex == -1 || info.isPrimitive {
+				continue
+			}
+			field := structValue.Field(info.fieldIndex)
+			tmp := tmpStrings[colIndex]
+			if tmp != nil && *tmp != "" {
+				json.Unmarshal([]byte(*tmp), field.Addr().Interface())
+			}
+		}
 		*results = append(*results, result)
 	}
 
@@ -403,9 +460,15 @@ func StructToDbMap[T any](s *T) (nonPkMap map[string]any, pkMap map[string]any) 
 		fieldTag := structValue.Type().Field(fieldIndex).Tag
 		valueField := structValue.Field(fieldIndex)
 		value := valueField.Interface()
+		// Marshal to JSON if not a basic type
+		if !isPrimitiveType(valueField.Type()) && value != nil {
+			if b, err := json.Marshal(value); err == nil {
+				value = string(b)
+			}
+		}
 		pkTag := fieldTag.Get("pk")
 		dbTag := fieldTag.Get("db")
-		if valueField.Kind() == reflect.Ptr && valueField.IsNil() {
+		if valueField.Kind() == reflect.Pointer && valueField.IsNil() {
 			continue
 		}
 		if dbTag != "" && pkTag != "true" {
@@ -480,13 +543,14 @@ func MapForSqlWhere(m map[string]any, startIndex int, dbType DbType) (where stri
 }
 
 func GetPlaceHolder(index int, dbType DbType) string {
-	if dbType == PostgreSQL {
+	switch dbType {
+	case PostgreSQL:
 		return fmt.Sprintf("$%d", index+1)
-	} else if dbType == SQLServer {
+	case SQLServer:
 		return fmt.Sprintf("@p%d", index+1)
-	} else if dbType == Oracle {
+	case Oracle:
 		return fmt.Sprintf(":%d", index+1)
-	} else {
+	default:
 		return "?"
 	}
 }

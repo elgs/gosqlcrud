@@ -230,7 +230,18 @@ func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlP
 		fieldIndex  int
 		isPrimitive bool
 	}
-	structType := reflect.TypeOf((*S)(nil)).Elem()
+	var (
+		structType reflect.Type
+		isPtr      bool
+	)
+	typeS := reflect.TypeOf((*S)(nil)).Elem()
+	if typeS.Kind() == reflect.Pointer {
+		isPtr = true
+		structType = typeS.Elem()
+	} else {
+		isPtr = false
+		structType = typeS
+	}
 	colToField := make([]fieldInfo, lenCols)
 	for colIndex, colName := range cols {
 		found := false
@@ -254,8 +265,18 @@ func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlP
 	}
 
 	for rows.Next() {
-		var result S
-		structValue := reflect.ValueOf(&result).Elem()
+		var (
+			resultVal reflect.Value
+		)
+		if isPtr {
+			resultVal = reflect.New(structType)
+		} else {
+			resultVal = reflect.New(structType).Elem()
+		}
+		structValue := resultVal
+		if isPtr {
+			structValue = resultVal.Elem()
+		}
 		fieldPtrs := make([]any, lenCols)
 		tmpStrings := make([]*string, lenCols) // for non-primitives
 		for colIndex, info := range colToField {
@@ -284,7 +305,7 @@ func QueryToStructs[T DB, S any](conn T, results *[]S, sqlStatement string, sqlP
 				json.Unmarshal([]byte(*tmp), field.Addr().Interface())
 			}
 		}
-		*results = append(*results, result)
+		*results = append(*results, resultVal.Interface().(S))
 	}
 
 	return nil
